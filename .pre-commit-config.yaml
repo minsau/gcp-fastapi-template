@@ -1,0 +1,27 @@
+exclude: '.git|.tox|.tf|.isort.cfg|.flake8|.lock|.toml'
+default_stages: [commit]
+fail_fast: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-merge-conflict
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/timothycrosley/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.0.2
+    hooks:
+    -   id: autoflake

@@ -1,0 +1,160 @@
+version: 2.1
+
+executors:
+  docker-publisher:
+    docker:
+      - image: google/cloud-sdk:latest
+
+orbs:
+  python: circleci/python@2.0.3
+
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.10
+        environment:
+          POSTGRES_DB: "test"
+          POSTGRES_USER: "test"
+          POSTGRES_PASSWORD: "test"
+          POSTGRES_SERVER: "localhost"
+          POSTGRES_PORT: 5432
+          SENTRY_DSN: http://YourSentryDSN.com
+          FIRST_SUPERUSER: admin@yourproject.com
+          FIRST_SUPERUSER_PASSWORD: admin
+          USE_CLOUD_TASKS: "False"
+          GCP_HIGH_PRIORITY_QUEUE_ID: "high-priority"
+          USE_GCP: "False"
+
+      - image: cimg/postgres:13.7
+        environment:
+          POSTGRES_DB: "test"
+          POSTGRES_USER: "test"
+          POSTGRES_PASSWORD: "test"
+
+    executor: python/default
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: poetry
+      - run:
+          command: |
+            mkdir test-results
+            poetry run pytest . -p no:warnings --junitxml=test-results/junit.xml
+          name: Run tests
+
+      - store_test_results:
+          path: test-results
+
+  lint:
+    docker:
+      - image: cimg/python:3.10
+
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: poetry
+
+      - run:
+          name: Run pre commit install
+          command: poetry run pre-commit install
+
+      - run:
+          name: Run pre commit check
+          command: poetry run pre-commit run -a
+
+  build-core:
+    executor: docker-publisher
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: docker build -f docker/Dockerfile -t $CORE_IMAGE_NAME:$TAG .
+      - run:
+          name: Persist Docker image
+          command: docker save -o core-image.tar $CORE_IMAGE_NAME:$TAG
+      - persist_to_workspace:
+          root: .
+          paths:
+            - ./core-image.tar
+
+
+  publish-latest-core:
+    executor: docker-publisher
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker
+      - run:
+          name: Load archived Docker image
+          command: docker load -i /tmp/workspace/core-image.tar
+      - run:
+          name: Authenticate with Google Cloud
+          command: echo ${GCLOUD_SERVICE_KEY} | gcloud auth activate-service-account --key-file=-
+      - run:
+          name: Configure Docker to use gcloud as a credential helper
+          command: |
+            gcloud --quiet auth configure-docker
+      - run:
+          name: Publish Docker Image to Google Container Registry
+          command: |
+            docker tag $CORE_IMAGE_NAME:$TAG gcr.io/$PROJECT_ID/$CORE_IMAGE_NAME:$TAG
+            docker push gcr.io/$PROJECT_ID/$CORE_IMAGE_NAME:$TAG
+      - store_artifacts:
+          path: core-image.tar
+
+  deploy:
+    executor: docker-publisher
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker
+      - run:
+          name: Load archived Docker image
+          command: docker load -i /tmp/workspace/core-image.tar
+      - run:
+          name: Authenticate with Google Cloud
+          command: echo ${GCLOUD_SERVICE_KEY} | gcloud auth activate-service-account --key-file=-
+      - run:
+          name: Configure Docker to use gcloud as a credential helper
+          command: |
+            gcloud --quiet auth configure-docker
+      - run:
+          name: Deploy to Cloud Run
+          command: |
+            gcloud run deploy core-service \
+              --image gcr.io/$PROJECT_ID/$CORE_IMAGE_NAME:$TAG \
+              --project $PROJECT_ID \
+              --platform managed \
+              --region $GCP_REGION \
+              --service-account $SERVICE_ACCOUNT_EMAIL \
+              --set-env-vars INTERNAL_PORT=80,RUNTYPE=web,PYTHONDONTWRITEBYTECODE=1,USE_GCP=True,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$GCP_REGION,GCP_SECRET_ID=$GCP_SECRET_ID,ENVIRONMENT=production,PROJECT_NAME="Tickets Hunter" \
+              --allow-unauthenticated
+
+workflows:
+  common:
+    jobs:
+      - lint
+      - test
+      - build-core:
+          requires:
+            - lint
+            - test
+          filters:
+              branches:
+                only:
+                  - main
+      - publish-latest-core:
+          requires:
+            - build-core
+          filters:
+              branches:
+                only:
+                  - main
+      - deploy:
+          requires:
+            - publish-latest-core
+          filters:
+              branches:
+                only:
+                  - main

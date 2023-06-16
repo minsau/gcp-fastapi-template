@@ -1,0 +1,34 @@
+version: "3.3"
+services:
+
+  db:
+    image: postgres:13
+    ports:
+      - "5432:5432"
+    volumes:
+      - app-db-data:/var/lib/postgresql/data/pgdata
+    env_file:
+      - .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+  core:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        - INSTALL_DEV=true
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - $PWD:/opt/app
+    environment:
+      - RUNTYPE=bash
+      - PYTHONDONTWRITEBYTECODE=1
+    env_file:
+      - .env
+
+volumes:
+  app:
+  app-db-data:

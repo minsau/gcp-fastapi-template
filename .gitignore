@@ -1,0 +1,57 @@
+__pycache__
+app.egg-info
+.env
+.env.prod
+.envrc
+Pipfile
+.scannerwork
+coverage.xml
+.coverage
+.env.local
+.env.metabase
+.bash_history
+.local
+.cache
+celerybeat-schedule
+.config
+.python_history
+.vscode-server
+.pki
+service-account.json
+
+# .gitignore
+
+# Terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# Kubernetes
+*.kubeconfig
+
+# Google Cloud Platform
+*.json
+
+# Local environment files
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyc
+
+# IDE-specific files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*.swn
+
+# OS-generated files
+.DS_Store
+Thumbs.db
